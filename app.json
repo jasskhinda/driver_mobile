@@ -1,29 +1,78 @@
 {
   "expo": {
-    "name": "driver_mobile",
-    "slug": "driver_mobile",
+    "name": "CCT Driver",
+    "slug": "cct-driver-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "scheme": "cctdriver",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#5fbfc0"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.compassionatecare.driver",
+      "buildNumber": "1",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification",
+          "location"
+        ],
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "CCT Driver needs access to your location to track trip progress and provide accurate ETAs.",
+        "NSLocationWhenInUseUsageDescription": "CCT Driver needs access to your location to track trip progress and provide accurate ETAs."
+      },
+      "config": {
+        "usesNonExemptEncryption": false,
+        "googleMapsApiKey": "AIzaSyDylwCsypHOs6T9e-JnTA7AoqOMrc3hbhE"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#5fbfc0"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": false,
+      "package": "com.compassionatecare.driver",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "NOTIFICATIONS",
+        "POST_NOTIFICATIONS"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDylwCsypHOs6T9e-JnTA7AoqOMrc3hbhE"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#5fbfc0"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow CCT Driver to use your location to track trip progress and provide accurate ETAs.",
+          "locationAlwaysPermission": "Allow CCT Driver to access your location even when the app is closed for tracking active trips.",
+          "locationWhenInUsePermission": "Allow CCT Driver to use your location while using the app to track trip progress.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
+    ],
+    "owner": "jass_khinda"
   }
 }
