@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "cctdriver",
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -62,6 +63,12 @@
         }
       ],
       [
+        "onesignal-expo-plugin",
+        {
+          "mode": "development"
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow CCT Driver to use your location to track trip progress and provide accurate ETAs.",
@@ -73,6 +80,29 @@
         }
       ]
     ],
+    "extra": {
+      "oneSignalAppId": "3dddb13c-3657-4e87-810c-38bf2dac5245",
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "OneSignalNotificationServiceExtension",
+                  "bundleIdentifier": "com.compassionatecare.driver.OneSignalNotificationServiceExtension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.compassionatecare.driver.onesignal"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": ""
+      }
+    },
     "owner": "jass_khinda"
   }
 }

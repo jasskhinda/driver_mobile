@@ -12,11 +12,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapViewDirections from 'react-native-maps-directions';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useGPSTracking } from '../hooks/useGPSTracking';
+import CarMarker from '../components/CarMarker';
 
 const BRAND_COLOR = '#5fbfc0';
+const GOOGLE_MAPS_API_KEY = 'AIzaSyDylwCsypHOs6T9e-JnTA7AoqOMrc3hbhE';
 const { width } = Dimensions.get('window');
 
 export default function TripDetailsScreen({ route, navigation }) {
@@ -74,7 +77,7 @@ export default function TripDetailsScreen({ route, navigation }) {
       if (tripData.managed_client_id) {
         const { data: clientData } = await supabase
           .from('facility_managed_clients')
-          .select('first_name, last_name, phone')
+          .select('first_name, last_name, phone_number')
           .eq('id', tripData.managed_client_id)
           .single();
         if (clientData) enrichedTrip.facility_managed_clients = clientData;
@@ -84,7 +87,7 @@ export default function TripDetailsScreen({ route, navigation }) {
       if (tripData.user_id) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('first_name, last_name, email, phone')
+          .select('first_name, last_name, email, phone_number')
           .eq('id', tripData.user_id)
           .single();
         if (profileData) enrichedTrip.profiles = profileData;
@@ -94,7 +97,7 @@ export default function TripDetailsScreen({ route, navigation }) {
       if (tripData.driver_id) {
         const { data: driverData } = await supabase
           .from('profiles')
-          .select('first_name, last_name, email, phone')
+          .select('first_name, last_name, email, phone_number')
           .eq('id', tripData.driver_id)
           .single();
         if (driverData) enrichedTrip.driver = driverData;
@@ -219,15 +222,17 @@ export default function TripDetailsScreen({ route, navigation }) {
 
   const getClientInfo = () => {
     if (trip?.facility_managed_clients) {
+      const { first_name, last_name, phone_number } = trip.facility_managed_clients;
       return {
-        name: `${trip.facility_managed_clients.first_name} ${trip.facility_managed_clients.last_name}`,
-        phone: trip.facility_managed_clients.phone,
+        name: `${first_name} ${last_name}`,
+        phone: phone_number,
       };
     }
     if (trip?.profiles) {
+      const { first_name, last_name, email, phone_number } = trip.profiles;
       return {
-        name: `${trip.profiles.first_name || ''} ${trip.profiles.last_name || ''}`.trim() || trip.profiles.email,
-        phone: trip.profiles.phone,
+        name: `${first_name || ''} ${last_name || ''}`.trim() || email,
+        phone: phone_number,
       };
     }
     return { name: 'Unknown Client', phone: null };
@@ -342,8 +347,8 @@ export default function TripDetailsScreen({ route, navigation }) {
                 description={trip.pickup_address}
                 pinColor="#10B981"
               >
-                <View style={styles.markerContainer}>
-                  <View style={[styles.markerDot, { backgroundColor: '#10B981' }]} />
+                <View style={styles.pickupMarker}>
+                  <Ionicons name="location" size={40} color="#10B981" />
                 </View>
               </Marker>
 
@@ -354,12 +359,12 @@ export default function TripDetailsScreen({ route, navigation }) {
                 description={trip.destination_address}
                 pinColor="#EF4444"
               >
-                <View style={styles.markerContainer}>
-                  <View style={[styles.markerDot, { backgroundColor: '#EF4444' }]} />
+                <View style={styles.destinationMarker}>
+                  <Ionicons name="flag" size={40} color="#EF4444" />
                 </View>
               </Marker>
 
-              {/* Driver Current Location Marker - Only show when tracking */}
+              {/* Driver Current Location Marker - Uber Style Car */}
               {isTracking && location && (
                 <Marker
                   coordinate={{
@@ -368,27 +373,28 @@ export default function TripDetailsScreen({ route, navigation }) {
                   }}
                   title="Your Location"
                   anchor={{ x: 0.5, y: 0.5 }}
+                  rotation={location.coords.heading || 0}
+                  flat={true}
                 >
-                  <View style={styles.driverMarker}>
-                    <Ionicons name="navigate-circle" size={40} color={BRAND_COLOR} />
-                  </View>
+                  <CarMarker size={56} color={BRAND_COLOR} />
                 </Marker>
               )}
 
-              {/* Route Line */}
-              {location && isTracking && (
-                <Polyline
-                  coordinates={[
-                    pickupCoords,
-                    {
-                      latitude: location.coords.latitude,
-                      longitude: location.coords.longitude,
-                    },
-                    destinationCoords,
-                  ]}
-                  strokeColor={BRAND_COLOR}
-                  strokeWidth={4}
-                  lineDashPattern={[1]}
+              {/* Route Line - Google Maps Directions */}
+              {pickupCoords && destinationCoords && (
+                <MapViewDirections
+                  origin={pickupCoords}
+                  destination={destinationCoords}
+                  apikey={GOOGLE_MAPS_API_KEY}
+                  strokeWidth={3}
+                  strokeColor="#007AFF"
+                  optimizeWaypoints={true}
+                  onReady={(result) => {
+                    console.log('Route loaded:', result.distance, 'km');
+                  }}
+                  onError={(errorMessage) => {
+                    console.error('MapViewDirections error:', errorMessage);
+                  }}
                 />
               )}
             </MapView>
@@ -752,23 +758,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  markerContainer: {
+  pickupMarker: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  markerDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 5,
-  },
-  driverMarker: {
+  destinationMarker: {
     alignItems: 'center',
     justifyContent: 'center',
   },
