@@ -2,28 +2,30 @@
   "expo": {
     "name": "CCT Driver",
     "slug": "cct-driver-mobile",
-    "version": "1.0.0",
+    "version": "1.0.4",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/iconinstalled.png",
     "userInterfaceStyle": "light",
     "scheme": "cctdriver",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/iconlogo.png",
       "resizeMode": "contain",
       "backgroundColor": "#5fbfc0"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.compassionatecare.driver",
-      "buildNumber": "1",
+      "buildNumber": "3",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification",
           "location"
         ],
         "NSLocationAlwaysAndWhenInUseUsageDescription": "CCT Driver needs access to your location to track trip progress and provide accurate ETAs.",
-        "NSLocationWhenInUseUsageDescription": "CCT Driver needs access to your location to track trip progress and provide accurate ETAs."
+        "NSLocationWhenInUseUsageDescription": "CCT Driver needs access to your location to track trip progress and provide accurate ETAs.",
+        "NSPhotoLibraryUsageDescription": "CCT Driver needs access to your photo library to upload your signature image for vehicle inspection forms. This signature is required to verify and complete daily vehicle inspections.",
+        "NSCameraUsageDescription": "CCT Driver needs access to your camera to take a photo of your signature for vehicle inspection forms."
       },
       "config": {
         "usesNonExemptEncryption": false,
@@ -32,11 +34,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/iconinstalled.png",
         "backgroundColor": "#5fbfc0"
       },
       "edgeToEdgeEnabled": false,
       "package": "com.compassionatecare.driver",
+      "versionCode": 5,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -44,7 +47,12 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "NOTIFICATIONS",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ],
       "config": {
         "googleMaps": {
@@ -59,13 +67,21 @@
       [
         "expo-notifications",
         {
+          "icon": "./assets/iconlogo.png",
           "color": "#5fbfc0"
         }
       ],
       [
         "onesignal-expo-plugin",
         {
-          "mode": "development"
+          "mode": "production"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CCT Driver needs access to your photo library to upload your signature image for vehicle inspection forms. This signature is required to verify and complete daily vehicle inspections.",
+          "cameraPermission": "CCT Driver needs access to your camera to take a photo of your signature for vehicle inspection forms."
         }
       ],
       [
@@ -95,12 +111,30 @@
                       "group.com.compassionatecare.driver.onesignal"
                     ]
                   }
+                },
+                {
+                  "targetName": "OneSignalNotificationServiceExtension",
+                  "bundleIdentifier": "com.compassionatecare.driver.OneSignalNotificationServiceExtension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.compassionatecare.driver.onesignal"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "OneSignalNotificationServiceExtension",
+                  "bundleIdentifier": "com.compassionatecare.driver.OneSignalNotificationServiceExtension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.compassionatecare.driver.onesignal"
+                    ]
+                  }
                 }
               ]
             }
           }
         },
-        "projectId": ""
+        "projectId": "3a66990f-2603-406e-a982-fa02d3bfc3dc"
       }
     },
     "owner": "jass_khinda"

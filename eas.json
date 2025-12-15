@@ -1,0 +1,29 @@
+{
+  "cli": {
+    "version": ">= 16.26.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://esprftkzloipihhnqmss.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzcHJmdGt6bG9pcGloaG5xbXNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzM2MjQwNjcsImV4cCI6MjA0OTIwMDA2N30.Q98Z8okB5MQkWBUq2EtdIrO1pYjbKLYsJ_0JI-XMdNE"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "thatisjass@gmail.com",
+        "appleTeamId": "4U272DP588"
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -231,7 +232,7 @@ export default function TripsScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Image
           source={require('../../assets/headerlogo.png')}
@@ -279,7 +280,7 @@ export default function TripsScreen({ navigation }) {
         }
         contentContainerStyle={[styles.listContent, trips.length === 0 && styles.emptyListContent]}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -296,7 +297,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: 10,
     paddingBottom: 5,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,49 @@ import {
   Linking,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useGPSTracking } from '../hooks/useGPSTracking';
+import { useLocationDisclosure } from '../hooks/useLocationDisclosure';
+import LocationDisclosureModal from '../components/LocationDisclosureModal';
 import CarMarker from '../components/CarMarker';
 
 const BRAND_COLOR = '#5fbfc0';
 const GOOGLE_MAPS_API_KEY = 'AIzaSyDylwCsypHOs6T9e-JnTA7AoqOMrc3hbhE';
-const { width } = Dimensions.get('window');
+const DISPATCHER_APP_URL = 'https://dispatch.compassionatecaretransportation.com';
+const { width, height } = Dimensions.get('window');
+
+// Helper function to send push notification to dispatchers when driver takes action
+async function notifyDispatcher(tripId, action, tripDetails = {}) {
+  try {
+    console.log('📤 Sending dispatcher notification:', { tripId, action });
+    const response = await fetch(`${DISPATCHER_APP_URL}/api/notifications/send-dispatcher-push`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tripId,
+        action,
+        source: 'driver_app',
+        tripDetails,
+      }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log('✅ Dispatcher notification sent:', result);
+    } else {
+      console.error('❌ Failed to send dispatcher notification:', await response.text());
+    }
+  } catch (error) {
+    console.error('❌ Error sending dispatcher notification:', error);
+  }
+}
 
 export default function TripDetailsScreen({ route, navigation }) {
   const { tripId } = route.params;
@@ -30,11 +62,59 @@ export default function TripDetailsScreen({ route, navigation }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [pickupCoords, setPickupCoords] = useState(null);
   const [destinationCoords, setDestinationCoords] = useState(null);
-  const mapRef = React.useRef(null);
+  const [routeInfo, setRouteInfo] = useState({ distance: null, duration: null });
+  const mapRef = useRef(null);
+
+  // Trip phase: 'waiting' | 'en_route_to_pickup' | 'arrived_at_pickup' | 'en_route_to_destination'
+  const [tripPhase, setTripPhase] = useState('waiting');
+
+  // Location disclosure management (for Google Play compliance)
+  const {
+    hasAcceptedDisclosure,
+    isLoading: disclosureLoading,
+    acceptDisclosure,
+  } = useLocationDisclosure();
+  const [showDisclosureModal, setShowDisclosureModal] = useState(false);
 
   // Enable GPS tracking when trip is in_progress
   const isTracking = trip?.status === 'in_progress' && trip?.driver_id === user?.id;
-  const { location, hasPermission } = useGPSTracking(tripId, user?.id, isTracking);
+  const {
+    location,
+    hasPermission,
+    needsDisclosure,
+    requestBackgroundPermission,
+  } = useGPSTracking(tripId, user?.id, isTracking, hasAcceptedDisclosure);
+
+  // Show disclosure modal when needed (triggered by GPS tracking hook)
+  useEffect(() => {
+    if (needsDisclosure && !hasAcceptedDisclosure && !disclosureLoading) {
+      setShowDisclosureModal(true);
+    }
+  }, [needsDisclosure, hasAcceptedDisclosure, disclosureLoading]);
+
+  // Handle disclosure acceptance
+  const handleDisclosureAccept = async () => {
+    const success = await acceptDisclosure();
+    setShowDisclosureModal(false);
+    if (success) {
+      // Now that disclosure is accepted, request the permission
+      requestBackgroundPermission();
+    }
+  };
+
+  // Handle disclosure decline
+  const handleDisclosureDecline = () => {
+    setShowDisclosureModal(false);
+    Alert.alert(
+      'Location Access Required',
+      'Background location is needed for trip tracking. You can enable it later from the trip screen.',
+      [{ text: 'OK' }]
+    );
+  };
+
+  // Determine current navigation target based on phase
+  const currentTarget = tripPhase === 'en_route_to_destination' ? destinationCoords : pickupCoords;
+  const currentTargetLabel = tripPhase === 'en_route_to_destination' ? 'Destination' : 'Pickup';
 
   useEffect(() => {
     fetchTripDetails();
@@ -50,7 +130,11 @@ export default function TripDetailsScreen({ route, navigation }) {
           filter: `id=eq.${tripId}`,
         },
         (payload) => {
-          setTrip(payload.new);
+          setTrip(prev => ({ ...prev, ...payload.new }));
+          // Update phase based on trip_phase column
+          if (payload.new.trip_phase) {
+            setTripPhase(payload.new.trip_phase);
+          }
         }
       )
       .subscribe();
@@ -72,6 +156,13 @@ export default function TripDetailsScreen({ route, navigation }) {
 
       // Enrich trip with related data
       const enrichedTrip = { ...tripData };
+
+      // Set initial trip phase
+      if (tripData.trip_phase) {
+        setTripPhase(tripData.trip_phase);
+      } else if (tripData.status === 'in_progress') {
+        setTripPhase('en_route_to_pickup');
+      }
 
       // Fetch facility managed client data
       if (tripData.managed_client_id) {
@@ -123,7 +214,7 @@ export default function TripDetailsScreen({ route, navigation }) {
   const geocodeAddress = async (address, setCoords) => {
     try {
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=AIzaSyDylwCsypHOs6T9e-JnTA7AoqOMrc3hbhE`
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`
       );
       const data = await response.json();
       if (data.results && data.results.length > 0) {
@@ -135,23 +226,29 @@ export default function TripDetailsScreen({ route, navigation }) {
     }
   };
 
-  // Fit map to show all markers
+  // Fit map to show route
   useEffect(() => {
-    if (mapRef.current && pickupCoords && destinationCoords && location) {
-      const coordinates = [
-        pickupCoords,
-        destinationCoords,
-        {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        },
-      ];
-      mapRef.current.fitToCoordinates(coordinates, {
-        edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-        animated: true,
-      });
+    if (mapRef.current && location && currentTarget) {
+      const driverCoords = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+
+      // If going to destination, include pickup too for context
+      const coordinates = tripPhase === 'en_route_to_destination'
+        ? [driverCoords, destinationCoords, pickupCoords].filter(Boolean)
+        : [driverCoords, pickupCoords].filter(Boolean);
+
+      if (coordinates.length >= 2) {
+        setTimeout(() => {
+          mapRef.current?.fitToCoordinates(coordinates, {
+            edgePadding: { top: 100, right: 60, bottom: 200, left: 60 },
+            animated: true,
+          });
+        }, 500);
+      }
     }
-  }, [pickupCoords, destinationCoords, location]);
+  }, [location, tripPhase, pickupCoords, destinationCoords]);
 
   const acceptTrip = async () => {
     setActionLoading(true);
@@ -169,6 +266,11 @@ export default function TripDetailsScreen({ route, navigation }) {
 
       Alert.alert('Success', 'Trip accepted successfully!');
       fetchTripDetails();
+
+      notifyDispatcher(tripId, 'driver_accepted', {
+        pickup_address: trip?.pickup_address,
+        driverName: user?.email,
+      });
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
@@ -176,30 +278,29 @@ export default function TripDetailsScreen({ route, navigation }) {
     }
   };
 
-  const updateStatus = async (newStatus) => {
+  const startTrip = async () => {
     setActionLoading(true);
     try {
-      const updateData = {
-        status: newStatus,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Update driver_acceptance_status along with trip status
-      if (newStatus === 'in_progress') {
-        updateData.driver_acceptance_status = 'started';
-      } else if (newStatus === 'completed') {
-        updateData.driver_acceptance_status = 'completed';
-      }
-
       const { error } = await supabase
         .from('trips')
-        .update(updateData)
+        .update({
+          status: 'in_progress',
+          driver_acceptance_status: 'started',
+          trip_phase: 'en_route_to_pickup',
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', tripId);
 
       if (error) throw error;
 
-      Alert.alert('Success', `Trip marked as ${newStatus}`);
+      setTripPhase('en_route_to_pickup');
+      Alert.alert('Success', 'Trip started! Navigate to pickup location.');
       fetchTripDetails();
+
+      notifyDispatcher(tripId, 'trip_started', {
+        pickup_address: trip?.pickup_address,
+        driverName: user?.email,
+      });
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
@@ -207,16 +308,101 @@ export default function TripDetailsScreen({ route, navigation }) {
     }
   };
 
-  const openMaps = (address) => {
-    const url = `https://maps.google.com/?q=${encodeURIComponent(address)}`;
-    Linking.openURL(url);
+  const arrivedAtPickup = async () => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .update({
+          trip_phase: 'arrived_at_pickup',
+          pickup_arrival_time: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', tripId);
+
+      if (error) throw error;
+
+      setTripPhase('arrived_at_pickup');
+      Alert.alert('Arrived!', 'Waiting for passenger. Tap "Start Ride" when ready.');
+
+      notifyDispatcher(tripId, 'arrived_at_pickup', {
+        pickup_address: trip?.pickup_address,
+        driverName: user?.email,
+      });
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const callClient = (phone) => {
-    if (phone) {
-      Linking.openURL(`tel:${phone}`);
-    } else {
-      Alert.alert('No Phone', 'Client phone number not available');
+  const startRide = async () => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .update({
+          trip_phase: 'en_route_to_destination',
+          ride_start_time: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', tripId);
+
+      if (error) throw error;
+
+      setTripPhase('en_route_to_destination');
+      Alert.alert('Ride Started!', 'Navigate to destination.');
+
+      notifyDispatcher(tripId, 'ride_started', {
+        destination_address: trip?.destination_address,
+        driverName: user?.email,
+      });
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const completeTrip = async () => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .update({
+          status: 'completed',
+          driver_acceptance_status: 'completed',
+          trip_phase: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', tripId);
+
+      if (error) throw error;
+
+      Alert.alert('Trip Completed!', 'Great job!');
+
+      notifyDispatcher(tripId, 'trip_completed', {
+        pickup_address: trip?.pickup_address,
+        driverName: user?.email,
+      });
+
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openNavigation = () => {
+    const address = tripPhase === 'en_route_to_destination'
+      ? trip?.destination_address
+      : trip?.pickup_address;
+
+    if (address) {
+      const url = `https://maps.google.com/?daddr=${encodeURIComponent(address)}`;
+      Linking.openURL(url);
     }
   };
 
@@ -245,11 +431,18 @@ export default function TripDetailsScreen({ route, navigation }) {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-      year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
     });
+  };
+
+  const formatDuration = (minutes) => {
+    if (!minutes) return '';
+    if (minutes < 60) return `${Math.round(minutes)} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    return `${hours}h ${mins}m`;
   };
 
   if (loading) {
@@ -269,43 +462,51 @@ export default function TripDetailsScreen({ route, navigation }) {
   }
 
   const client = getClientInfo();
-  // Driver can accept if they are assigned and haven't accepted yet
-  // Fallback: if driver_acceptance_status doesn't exist, check assigned_driver_id
   const canAccept = trip.assigned_driver_id === user.id &&
                     !trip.driver_id &&
                     (trip.driver_acceptance_status === 'assigned_waiting' ||
-                     !trip.driver_acceptance_status); // Fallback for trips without the column
-  // Driver can start if they've accepted (driver_id set and driver_acceptance_status is 'accepted')
-  // Fallback: if driver_acceptance_status doesn't exist, check driver_id and status
+                     !trip.driver_acceptance_status);
   const canStart = trip.driver_id === user.id &&
                    (trip.driver_acceptance_status === 'accepted' ||
                     (!trip.driver_acceptance_status && trip.status === 'upcoming')) &&
                    trip.status !== 'in_progress';
-  const canComplete = trip.status === 'in_progress' && trip.driver_id === user.id;
+  const isInProgress = trip.status === 'in_progress' && trip.driver_id === user.id;
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'assigned':
-        return '#3B82F6';
-      case 'in_progress':
-        return '#F59E0B';
-      case 'completed':
-        return '#10B981';
-      case 'cancelled':
-        return '#EF4444';
-      case 'approved':
-        return BRAND_COLOR;
-      default:
-        return '#6B7280';
+      case 'assigned': return '#3B82F6';
+      case 'in_progress': return '#F59E0B';
+      case 'completed': return '#10B981';
+      case 'cancelled': return '#EF4444';
+      default: return '#6B7280';
     }
   };
 
-  const getStatusLabel = (status) => {
-    return status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1);
+  const getPhaseInfo = () => {
+    switch (tripPhase) {
+      case 'en_route_to_pickup':
+        return { label: 'Navigating to Pickup', color: '#3B82F6', icon: 'navigate' };
+      case 'arrived_at_pickup':
+        return { label: 'Waiting for Passenger', color: '#F59E0B', icon: 'time' };
+      case 'en_route_to_destination':
+        return { label: 'Heading to Destination', color: '#10B981', icon: 'car' };
+      default:
+        return { label: 'Ready', color: '#6B7280', icon: 'checkmark-circle' };
+    }
   };
 
+  const phaseInfo = getPhaseInfo();
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Location Disclosure Modal - Required for Google Play compliance */}
+      <LocationDisclosureModal
+        visible={showDisclosureModal}
+        onAccept={handleDisclosureAccept}
+        onDecline={handleDisclosureDecline}
+      />
+
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#333" />
@@ -314,247 +515,388 @@ export default function TripDetailsScreen({ route, navigation }) {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Status Badge */}
-        <View style={styles.statusContainer}>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(trip.status) }]}>
-            <Ionicons name="information-circle" size={18} color="#fff" />
-            <Text style={styles.statusText}>{getStatusLabel(trip.status)}</Text>
-          </View>
-        </View>
-
-        {/* Map View - Show when trip is in progress or assigned */}
-        {(trip.status === 'in_progress' || trip.status === 'assigned') && pickupCoords && destinationCoords && (
-          <View style={styles.mapContainer}>
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              provider={PROVIDER_GOOGLE}
-              initialRegion={{
-                latitude: pickupCoords.latitude,
-                longitude: pickupCoords.longitude,
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
+      {/* Map View - Full screen when in progress */}
+      {isInProgress && location && currentTarget ? (
+        <View style={styles.fullMapContainer}>
+          <MapView
+            ref={mapRef}
+            style={styles.fullMap}
+            provider={PROVIDER_GOOGLE}
+            showsUserLocation={false}
+            showsMyLocationButton={false}
+            loadingEnabled={true}
+          >
+            {/* Driver Location - Uber Style Car */}
+            <Marker
+              coordinate={{
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
               }}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
-              loadingEnabled={true}
+              anchor={{ x: 0.5, y: 0.5 }}
+              rotation={location.coords.heading || 0}
+              flat={true}
             >
-              {/* Pickup Marker */}
+              <CarMarker size={56} color={BRAND_COLOR} />
+            </Marker>
+
+            {/* Pickup Marker */}
+            {pickupCoords && (
               <Marker
                 coordinate={pickupCoords}
-                title="Pickup Location"
+                title="Pickup"
                 description={trip.pickup_address}
-                pinColor="#10B981"
               >
-                <View style={styles.pickupMarker}>
-                  <Ionicons name="location" size={40} color="#10B981" />
+                <View style={styles.markerContainer}>
+                  <View style={[styles.markerDot, { backgroundColor: '#10B981' }]}>
+                    <Ionicons name="location" size={20} color="#fff" />
+                  </View>
+                  <Text style={styles.markerLabel}>PICKUP</Text>
                 </View>
               </Marker>
+            )}
 
-              {/* Destination Marker */}
+            {/* Destination Marker */}
+            {destinationCoords && (
               <Marker
                 coordinate={destinationCoords}
                 title="Destination"
                 description={trip.destination_address}
-                pinColor="#EF4444"
               >
-                <View style={styles.destinationMarker}>
-                  <Ionicons name="flag" size={40} color="#EF4444" />
+                <View style={styles.markerContainer}>
+                  <View style={[styles.markerDot, { backgroundColor: '#EF4444' }]}>
+                    <Ionicons name="flag" size={20} color="#fff" />
+                  </View>
+                  <Text style={styles.markerLabel}>DROP-OFF</Text>
                 </View>
               </Marker>
+            )}
 
-              {/* Driver Current Location Marker - Uber Style Car */}
-              {isTracking && location && (
-                <Marker
-                  coordinate={{
-                    latitude: location.coords.latitude,
-                    longitude: location.coords.longitude,
-                  }}
-                  title="Your Location"
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  rotation={location.coords.heading || 0}
-                  flat={true}
+            {/* Route 1: Driver to Pickup (Blue - Only show when heading to pickup) */}
+            {/* Rendered FIRST so green route appears on top where they overlap */}
+            {tripPhase === 'en_route_to_pickup' && pickupCoords && (
+              <MapViewDirections
+                origin={{
+                  latitude: location.coords.latitude,
+                  longitude: location.coords.longitude,
+                }}
+                destination={pickupCoords}
+                apikey={GOOGLE_MAPS_API_KEY}
+                strokeWidth={6}
+                strokeColor="#2563EB"
+                optimizeWaypoints={true}
+                onReady={(result) => {
+                  setRouteInfo({
+                    distance: result.distance,
+                    duration: result.duration,
+                  });
+                }}
+              />
+            )}
+
+            {/* Route 2: Pickup to Destination (Green - The booked route that never changes) */}
+            {/* Rendered SECOND so it appears on top */}
+            {pickupCoords && destinationCoords && (
+              <MapViewDirections
+                origin={pickupCoords}
+                destination={destinationCoords}
+                apikey={GOOGLE_MAPS_API_KEY}
+                strokeWidth={6}
+                strokeColor="#22C55E"
+                optimizeWaypoints={true}
+              />
+            )}
+
+            {/* When en route to destination, show ETA to destination */}
+            {tripPhase === 'en_route_to_destination' && destinationCoords && (
+              <MapViewDirections
+                origin={{
+                  latitude: location.coords.latitude,
+                  longitude: location.coords.longitude,
+                }}
+                destination={destinationCoords}
+                apikey={GOOGLE_MAPS_API_KEY}
+                strokeWidth={0}
+                strokeColor="transparent"
+                onReady={(result) => {
+                  setRouteInfo({
+                    distance: result.distance,
+                    duration: result.duration,
+                  });
+                }}
+              />
+            )}
+          </MapView>
+
+          {/* Top Status Bar */}
+          <View style={styles.topStatusBar}>
+            <View style={[styles.phaseIndicator, { backgroundColor: phaseInfo.color }]}>
+              <Ionicons name={phaseInfo.icon} size={18} color="#fff" />
+              <Text style={styles.phaseText}>{phaseInfo.label}</Text>
+            </View>
+          </View>
+
+          {/* ETA Card */}
+          {routeInfo.duration && (
+            <View style={styles.etaCard}>
+              <Text style={styles.etaTime}>{formatDuration(routeInfo.duration)}</Text>
+              <Text style={styles.etaLabel}>to {currentTargetLabel}</Text>
+              <Text style={styles.etaDistance}>{routeInfo.distance?.toFixed(1)} km</Text>
+            </View>
+          )}
+
+          {/* Route Legend */}
+          <View style={styles.legendCard}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendLine, { backgroundColor: '#2563EB' }]} />
+              <Text style={styles.legendText}>To Pickup</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendLine, { backgroundColor: '#22C55E' }]} />
+              <Text style={styles.legendText}>Trip Route</Text>
+            </View>
+          </View>
+
+          {/* Bottom Card */}
+          <View style={styles.bottomCard}>
+            {/* Client Info */}
+            <View style={styles.clientRow}>
+              <View style={styles.clientInfo}>
+                <Text style={styles.clientName}>{client.name}</Text>
+                <Text style={styles.addressText} numberOfLines={1}>
+                  {tripPhase === 'en_route_to_destination' ? trip.destination_address : trip.pickup_address}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.navButton}
+                onPress={openNavigation}
+              >
+                <Ionicons name="navigate" size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Action Button */}
+            <View style={styles.actionRow}>
+              {tripPhase === 'en_route_to_pickup' && (
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
+                  onPress={arrivedAtPickup}
+                  disabled={actionLoading}
                 >
-                  <CarMarker size={56} color={BRAND_COLOR} />
-                </Marker>
+                  {actionLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="location" size={24} color="#fff" />
+                      <Text style={styles.actionButtonText}>Arrived at Pickup</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               )}
 
-              {/* Route Line - Google Maps Directions */}
-              {pickupCoords && destinationCoords && (
-                <MapViewDirections
-                  origin={pickupCoords}
-                  destination={destinationCoords}
-                  apikey={GOOGLE_MAPS_API_KEY}
-                  strokeWidth={3}
-                  strokeColor="#007AFF"
-                  optimizeWaypoints={true}
-                  onReady={(result) => {
-                    console.log('Route loaded:', result.distance, 'km');
-                  }}
-                  onError={(errorMessage) => {
-                    console.error('MapViewDirections error:', errorMessage);
-                  }}
-                />
+              {tripPhase === 'arrived_at_pickup' && (
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+                  onPress={startRide}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="car" size={24} color="#fff" />
+                      <Text style={styles.actionButtonText}>Start Ride</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               )}
-            </MapView>
 
-            {/* GPS Status Indicator */}
-            {isTracking && (
-              <View style={styles.gpsIndicator}>
-                <View style={styles.gpsDot} />
-                <Text style={styles.gpsText}>Live Tracking Active</Text>
+              {tripPhase === 'en_route_to_destination' && (
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+                  onPress={completeTrip}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-done-circle" size={24} color="#fff" />
+                      <Text style={styles.actionButtonText}>Complete Trip</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      ) : (
+        /* Non-active trip view */
+        <>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* Status Badge */}
+            <View style={styles.statusContainer}>
+              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(trip.status) }]}>
+                <Ionicons name="information-circle" size={18} color="#fff" />
+                <Text style={styles.statusText}>
+                  {trip.status === 'in_progress' ? 'In Progress' : trip.status.charAt(0).toUpperCase() + trip.status.slice(1)}
+                </Text>
+              </View>
+              <Text style={styles.tripId}>Trip ID: {tripId}</Text>
+            </View>
+
+            {/* Map Preview */}
+            {pickupCoords && destinationCoords && (
+              <View style={styles.mapPreviewContainer}>
+                <MapView
+                  style={styles.mapPreview}
+                  provider={PROVIDER_GOOGLE}
+                  initialRegion={{
+                    latitude: pickupCoords.latitude,
+                    longitude: pickupCoords.longitude,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                  }}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                >
+                  <Marker coordinate={pickupCoords} pinColor="#10B981" />
+                  <Marker coordinate={destinationCoords} pinColor="#EF4444" />
+                  <MapViewDirections
+                    origin={pickupCoords}
+                    destination={destinationCoords}
+                    apikey={GOOGLE_MAPS_API_KEY}
+                    strokeWidth={3}
+                    strokeColor="#007AFF"
+                  />
+                </MapView>
               </View>
             )}
-          </View>
-        )}
 
-        {/* Client Info Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="person" size={24} color={BRAND_COLOR} />
-            <Text style={styles.cardTitle}>Client Information</Text>
-          </View>
-          <View style={styles.cardContent}>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Name</Text>
-              <Text style={styles.detailValue}>{client.name}</Text>
-            </View>
-            {client.phone && (
-              <TouchableOpacity
-                style={styles.detailRow}
-                onPress={() => callClient(client.phone)}
-              >
-                <Text style={styles.detailLabel}>Phone</Text>
-                <View style={styles.phoneContainer}>
-                  <Text style={[styles.detailValue, styles.linkText]}>{client.phone}</Text>
-                  <Ionicons name="call" size={18} color={BRAND_COLOR} />
+            {/* Client Info Card */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="person" size={24} color={BRAND_COLOR} />
+                <Text style={styles.cardTitle}>Client Information</Text>
+              </View>
+              <View style={styles.cardContent}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Name</Text>
+                  <Text style={styles.detailValue}>{client.name}</Text>
                 </View>
+                {client.phone && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Phone</Text>
+                    <Text style={styles.detailValue}>{client.phone}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Time Card */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="time" size={24} color={BRAND_COLOR} />
+                <Text style={styles.cardTitle}>Pickup Time</Text>
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.timeText}>{formatDateTime(trip.pickup_time)}</Text>
+              </View>
+            </View>
+
+            {/* Locations Card */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="location" size={24} color={BRAND_COLOR} />
+                <Text style={styles.cardTitle}>Trip Route</Text>
+              </View>
+              <View style={styles.cardContent}>
+                <TouchableOpacity
+                  style={styles.addressRow}
+                  onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(trip.pickup_address)}`)}
+                >
+                  <View style={styles.addressIconContainer}>
+                    <Ionicons name="location" size={20} color="#10B981" />
+                  </View>
+                  <View style={styles.addressTextContainer}>
+                    <Text style={styles.addressLabel}>Pickup Location</Text>
+                    <Text style={[styles.addressTextDetail, styles.linkText]}>{trip.pickup_address}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#999" />
+                </TouchableOpacity>
+
+                <View style={styles.routeLine} />
+
+                <TouchableOpacity
+                  style={styles.addressRow}
+                  onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(trip.destination_address)}`)}
+                >
+                  <View style={styles.addressIconContainer}>
+                    <Ionicons name="flag" size={20} color="#EF4444" />
+                  </View>
+                  <View style={styles.addressTextContainer}>
+                    <Text style={styles.addressLabel}>Destination</Text>
+                    <Text style={[styles.addressTextDetail, styles.linkText]}>{trip.destination_address}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#999" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Special Requirements */}
+            {trip.special_requirements && (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Ionicons name="alert-circle" size={24} color="#F59E0B" />
+                  <Text style={styles.cardTitle}>Special Requirements</Text>
+                </View>
+                <View style={styles.cardContent}>
+                  <Text style={styles.requirementsText}>{trip.special_requirements}</Text>
+                </View>
+              </View>
+            )}
+
+            <View style={{ height: 100 }} />
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={styles.bottomActionContainer}>
+            {canAccept && (
+              <TouchableOpacity
+                style={[styles.bottomActionButton, { backgroundColor: BRAND_COLOR }]}
+                onPress={acceptTrip}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={24} color="#fff" />
+                    <Text style={styles.bottomActionText}>Accept Trip</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {canStart && (
+              <TouchableOpacity
+                style={[styles.bottomActionButton, { backgroundColor: '#F59E0B' }]}
+                onPress={startTrip}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="play-circle" size={24} color="#fff" />
+                    <Text style={styles.bottomActionText}>Start Trip</Text>
+                  </>
+                )}
               </TouchableOpacity>
             )}
           </View>
-        </View>
-
-        {/* Time Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="time" size={24} color={BRAND_COLOR} />
-            <Text style={styles.cardTitle}>Pickup Time</Text>
-          </View>
-          <View style={styles.cardContent}>
-            <Text style={styles.timeText}>{formatDateTime(trip.pickup_time)}</Text>
-          </View>
-        </View>
-
-        {/* Locations Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="location" size={24} color={BRAND_COLOR} />
-            <Text style={styles.cardTitle}>Trip Route</Text>
-          </View>
-          <View style={styles.cardContent}>
-            <TouchableOpacity
-              style={styles.addressRow}
-              onPress={() => openMaps(trip.pickup_address)}
-            >
-              <View style={styles.addressIconContainer}>
-                <Ionicons name="location" size={20} color="#10B981" />
-              </View>
-              <View style={styles.addressTextContainer}>
-                <Text style={styles.addressLabel}>Pickup Location</Text>
-                <Text style={[styles.addressText, styles.linkText]}>{trip.pickup_address}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
-
-            <View style={styles.routeLine} />
-
-            <TouchableOpacity
-              style={styles.addressRow}
-              onPress={() => openMaps(trip.destination_address)}
-            >
-              <View style={styles.addressIconContainer}>
-                <Ionicons name="flag" size={20} color="#EF4444" />
-              </View>
-              <View style={styles.addressTextContainer}>
-                <Text style={styles.addressLabel}>Destination</Text>
-                <Text style={[styles.addressText, styles.linkText]}>{trip.destination_address}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Special Requirements */}
-        {trip.special_requirements && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="alert-circle" size={24} color="#F59E0B" />
-              <Text style={styles.cardTitle}>Special Requirements</Text>
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.requirementsText}>{trip.special_requirements}</Text>
-            </View>
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* Action Buttons */}
-      <View style={styles.actionContainer}>
-        {canAccept && (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.acceptButton]}
-            onPress={acceptTrip}
-            disabled={actionLoading}
-          >
-            {actionLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                <Text style={styles.actionButtonText}>Accept Trip</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
-
-        {canStart && (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.startButton]}
-            onPress={() => updateStatus('in_progress')}
-            disabled={actionLoading}
-          >
-            {actionLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="play-circle" size={24} color="#fff" />
-                <Text style={styles.actionButtonText}>Start Trip</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
-
-        {canComplete && (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.completeButton]}
-            onPress={() => updateStatus('completed')}
-            disabled={actionLoading}
-          >
-            {actionLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-done-circle" size={24} color="#fff" />
-                <Text style={styles.actionButtonText}>Complete Trip</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
+        </>
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -582,10 +924,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 50,
+    paddingTop: 10,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    zIndex: 10,
   },
   backButton: {
     padding: 8,
@@ -620,6 +963,204 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  tripId: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  // Full screen map styles
+  fullMapContainer: {
+    flex: 1,
+  },
+  fullMap: {
+    flex: 1,
+  },
+  topStatusBar: {
+    position: 'absolute',
+    top: 10,
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+  },
+  phaseIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 25,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  phaseText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  etaCard: {
+    position: 'absolute',
+    top: 60,
+    right: 16,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  etaTime: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  etaLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  etaDistance: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  legendCard: {
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    backgroundColor: '#fff',
+    padding: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 3,
+  },
+  legendLine: {
+    width: 20,
+    height: 4,
+    borderRadius: 2,
+    marginRight: 8,
+  },
+  legendText: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  bottomCard: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  clientInfo: {
+    flex: 1,
+  },
+  clientName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  addressText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  navButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  actionRow: {
+    marginTop: 8,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 10,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  // Map markers
+  markerContainer: {
+    alignItems: 'center',
+  },
+  markerDot: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  markerLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 4,
+    backgroundColor: '#fff',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  // Map preview styles
+  mapPreviewContainer: {
+    height: 200,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  // Card styles
   card: {
     backgroundColor: '#fff',
     marginHorizontal: 16,
@@ -662,11 +1203,6 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
-  phoneContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   timeText: {
     fontSize: 18,
     color: '#333',
@@ -694,7 +1230,7 @@ const styles = StyleSheet.create({
     color: '#999',
     marginBottom: 4,
   },
-  addressText: {
+  addressTextDetail: {
     fontSize: 14,
     color: '#333',
     lineHeight: 20,
@@ -714,13 +1250,13 @@ const styles = StyleSheet.create({
   linkText: {
     color: BRAND_COLOR,
   },
-  actionContainer: {
+  bottomActionContainer: {
     padding: 16,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
-  actionButton: {
+  bottomActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -728,70 +1264,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
-  acceptButton: {
-    backgroundColor: BRAND_COLOR,
-  },
-  startButton: {
-    backgroundColor: '#F59E0B',
-  },
-  completeButton: {
-    backgroundColor: '#10B981',
-  },
-  actionButtonText: {
+  bottomActionText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  mapContainer: {
-    height: 300,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  map: {
-    width: '100%',
-    height: '100%',
-  },
-  pickupMarker: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  destinationMarker: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gpsIndicator: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
-    gap: 6,
-  },
-  gpsDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
-  },
-  gpsText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#333',
   },
 });

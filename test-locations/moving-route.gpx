@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<gpx version="1.1" creator="CCT Driver Testing - Moving Route">
+  <!-- Simulates a driver moving through San Francisco -->
+  <trk>
+    <name>SF Test Route</name>
+    <trkseg>
+      <!-- Start: Union Square -->
+      <trkpt lat="37.7879" lon="-122.4074">
+        <time>2024-01-01T10:00:00Z</time>
+      </trkpt>
+      <!-- Moving south -->
+      <trkpt lat="37.7849" lon="-122.4094">
+        <time>2024-01-01T10:00:30Z</time>
+      </trkpt>
+      <trkpt lat="37.7819" lon="-122.4114">
+        <time>2024-01-01T10:01:00Z</time>
+      </trkpt>
+      <trkpt lat="37.7789" lon="-122.4134">
+        <time>2024-01-01T10:01:30Z</time>
+      </trkpt>
+      <!-- Continue south on Market St -->
+      <trkpt lat="37.7759" lon="-122.4154">
+        <time>2024-01-01T10:02:00Z</time>
+      </trkpt>
+      <trkpt lat="37.7729" lon="-122.4174">
+        <time>2024-01-01T10:02:30Z</time>
+      </trkpt>
+      <!-- Approaching Civic Center -->
+      <trkpt lat="37.7699" lon="-122.4194">
+        <time>2024-01-01T10:03:00Z</time>
+      </trkpt>
+      <trkpt lat="37.7669" lon="-122.4214">
+        <time>2024-01-01T10:03:30Z</time>
+      </trkpt>
+      <!-- End: Near Hayes Valley -->
+      <trkpt lat="37.7639" lon="-122.4234">
+        <time>2024-01-01T10:04:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

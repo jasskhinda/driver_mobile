@@ -82,10 +82,10 @@ export const AuthProvider = ({ children }) => {
 
         if (profileError) throw profileError;
 
-        // Only allow dispatcher or admin roles
-        if (profile.role !== 'dispatcher' && profile.role !== 'admin') {
+        // Only allow driver role
+        if (profile.role !== 'driver') {
           await supabase.auth.signOut();
-          throw new Error('Access denied. This app is for dispatchers only.');
+          throw new Error('Access denied. This app is for drivers only.');
         }
       }
 

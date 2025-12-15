@@ -8,8 +8,13 @@ import HomeScreen from '../screens/HomeScreen';
 import TripsScreen from '../screens/TripsScreen';
 import TripDetailsScreen from '../screens/TripDetailsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import ClockScreen from '../screens/ClockScreen';
+import VehicleInspectionScreen from '../screens/VehicleInspectionScreen';
+import ShiftHistoryScreen from '../screens/ShiftHistoryScreen';
 import { useAuth, AuthProvider } from '../hooks/useAuth';
-import { ActivityIndicator, View } from 'react-native';
+import { ShiftProvider } from '../contexts/ShiftContext';
+import { ActivityIndicator, View, Platform } from 'react-native';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -26,8 +31,12 @@ function MainTabs() {
 
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Clock') {
+            iconName = focused ? 'time' : 'time-outline';
           } else if (route.name === 'Trips') {
             iconName = focused ? 'car' : 'car-outline';
+          } else if (route.name === 'Notifications') {
+            iconName = focused ? 'notifications' : 'notifications-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -37,20 +46,24 @@ function MainTabs() {
         tabBarActiveTintColor: BRAND_COLOR,
         tabBarInactiveTintColor: '#999',
         tabBarStyle: {
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          paddingTop: 8,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+          height: Platform.OS === 'ios' ? 85 : 70,
           borderTopWidth: 1,
           borderTopColor: '#E5E7EB',
+          backgroundColor: '#fff',
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '600',
+          marginBottom: Platform.OS === 'ios' ? 0 : 5,
         },
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Clock" component={ClockScreen} />
       <Tab.Screen name="Trips" component={TripsScreen} />
+      <Tab.Screen name="Notifications" component={NotificationsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -80,6 +93,16 @@ function Navigation() {
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} />
             <Stack.Screen name="TripDetails" component={TripDetailsScreen} />
+            <Stack.Screen
+              name="VehicleInspection"
+              component={VehicleInspectionScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="ShiftHistory"
+              component={ShiftHistoryScreen}
+              options={{ headerShown: false }}
+            />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
@@ -92,7 +115,9 @@ function Navigation() {
 export default function AppNavigator() {
   return (
     <AuthProvider>
-      <Navigation />
+      <ShiftProvider>
+        <Navigation />
+      </ShiftProvider>
     </AuthProvider>
   );
 }

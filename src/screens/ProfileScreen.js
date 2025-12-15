@@ -13,6 +13,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -159,7 +160,7 @@ export default function ProfileScreen({ navigation }) {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Image
           source={require('../../assets/headerlogo.png')}
@@ -168,7 +169,7 @@ export default function ProfileScreen({ navigation }) {
         />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         <View style={styles.profileCard}>
           <Ionicons name="person-circle" size={80} color={BRAND_COLOR} />
           <Text style={styles.name}>
@@ -223,7 +224,7 @@ export default function ProfileScreen({ navigation }) {
           <Ionicons name="log-out-outline" size={24} color="#EF4444" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* Edit Name Modal */}
       <Modal
@@ -344,7 +345,7 @@ export default function ProfileScreen({ navigation }) {
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -361,7 +362,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: 10,
     paddingBottom: 5,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
@@ -375,7 +376,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     padding: 20,
+    paddingBottom: 40,
   },
   profileCard: {
     backgroundColor: '#fff',

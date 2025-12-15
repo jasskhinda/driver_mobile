@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "464877215168",
+    "project_id": "cct-driver-mobile-noti",
+    "storage_bucket": "cct-driver-mobile-noti.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464877215168:android:fb82aa5de4aa7e4a027c25",
+        "android_client_info": {
+          "package_name": "com.compassionatecare.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDKAXkL8g2eWHh9Lk3bbi1B4O4NLciXT18"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
