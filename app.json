@@ -2,7 +2,7 @@
   "expo": {
     "name": "CCT Driver",
     "slug": "cct-driver-mobile",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/iconinstalled.png",
     "userInterfaceStyle": "light",
@@ -16,16 +16,17 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.compassionatecare.driver",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification",
           "location"
         ],
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "CCT Driver needs access to your location to track trip progress and provide accurate ETAs.",
-        "NSLocationWhenInUseUsageDescription": "CCT Driver needs access to your location to track trip progress and provide accurate ETAs.",
-        "NSPhotoLibraryUsageDescription": "CCT Driver needs access to your photo library to upload your signature image for vehicle inspection forms. This signature is required to verify and complete daily vehicle inspections.",
-        "NSCameraUsageDescription": "CCT Driver needs access to your camera to take a photo of your signature for vehicle inspection forms."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "CCT Driver uses your location to track your position during active medical transportation trips. This allows dispatchers to monitor trip progress, calculate accurate ETAs for patients and facilities, and ensure safe and timely pickups and drop-offs. Location tracking only occurs during your active work shifts.",
+        "NSLocationWhenInUseUsageDescription": "CCT Driver uses your location while the app is open to display your current position on the map, calculate routes to pickup and drop-off locations, and provide turn-by-turn navigation to patient destinations.",
+        "NSLocationAlwaysUsageDescription": "CCT Driver uses background location to continue tracking your trip progress even when the app is minimized. This ensures dispatchers can monitor active trips and patients receive accurate arrival time updates.",
+        "NSPhotoLibraryUsageDescription": "CCT Driver requires photo library access to save and upload your handwritten signature for daily vehicle inspection forms. This digital signature serves as your official attestation that the pre-trip safety inspection was completed as required by DOT regulations.",
+        "NSCameraUsageDescription": "CCT Driver uses your camera to capture your handwritten signature for vehicle inspection forms. This signature is required to certify that you have completed the mandatory pre-trip vehicle safety inspection."
       },
       "config": {
         "usesNonExemptEncryption": false,
@@ -39,7 +40,7 @@
       },
       "edgeToEdgeEnabled": false,
       "package": "com.compassionatecare.driver",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -80,16 +81,16 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "CCT Driver needs access to your photo library to upload your signature image for vehicle inspection forms. This signature is required to verify and complete daily vehicle inspections.",
-          "cameraPermission": "CCT Driver needs access to your camera to take a photo of your signature for vehicle inspection forms."
+          "photosPermission": "CCT Driver requires photo library access to save and upload your handwritten signature for daily vehicle inspection forms. This digital signature serves as your official attestation that the pre-trip safety inspection was completed as required by DOT regulations.",
+          "cameraPermission": "CCT Driver uses your camera to capture your handwritten signature for vehicle inspection forms. This signature is required to certify that you have completed the mandatory pre-trip vehicle safety inspection."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow CCT Driver to use your location to track trip progress and provide accurate ETAs.",
-          "locationAlwaysPermission": "Allow CCT Driver to access your location even when the app is closed for tracking active trips.",
-          "locationWhenInUsePermission": "Allow CCT Driver to use your location while using the app to track trip progress.",
+          "locationAlwaysAndWhenInUsePermission": "CCT Driver uses your location to track your position during active medical transportation trips. This allows dispatchers to monitor trip progress, calculate accurate ETAs for patients and facilities, and ensure safe and timely pickups and drop-offs.",
+          "locationAlwaysPermission": "CCT Driver uses background location to continue tracking your trip progress even when the app is minimized. This ensures dispatchers can monitor active trips and patients receive accurate arrival time updates.",
+          "locationWhenInUsePermission": "CCT Driver uses your location while the app is open to display your current position on the map, calculate routes to pickup and drop-off locations, and provide turn-by-turn navigation to patient destinations.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
